@@ -19,7 +19,7 @@
 # THE SOFTWARE.
 import sqlite3
 from itertools import cycle
-from typing import NamedTuple, Set, Optional
+from typing import NamedTuple, Optional, Set
 
 import numpy as np
 

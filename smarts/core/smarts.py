@@ -23,7 +23,7 @@ import math
 import os
 import warnings
 from collections import defaultdict
-from typing import List, Sequence
+from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -56,6 +56,7 @@ from .traffic_history_provider import TrafficHistoryProvider
 from .trajectory_interpolation_provider import TrajectoryInterpolationProvider
 from .trap_manager import TrapManager
 from .utils import pybullet
+from .utils.config import SmartsConfig
 from .utils.id import Id
 from .utils.math import rounder_for_dt
 from .utils.pybullet import bullet_client as bc
@@ -77,26 +78,41 @@ class SMARTSNotSetupError(Exception):
 
 
 class SMARTS:
+    """The SMARTS simulator. This is the direct interface to all parts of the simulation.
+    Args:
+        agent_interfaces: The interfaces providing SMARTS with the understanding of what features an agent needs.
+        traffic_sim: The traffic simulator for providing non-agent traffic.
+        envision: An envision client for connecting to an envision visualization server.
+        visdom: A visdom client for connecting to a visdom visualization server.
+        fixed_timestep_sec: The fixed timestep that will be default if time is not otherwise specified at step.
+        reset_agents_only: When specified the simulation will continue use of the current scenario.
+        zoo_addrs: The (ip:port) values of remote agent workers for externally hosted agents.
+        external_provider: Creates a special provider `SMARTS.external_provider` that allows for inserting state.
+        config: The simulation configuration file for unexposed configuration.
+    """
+
     def __init__(
         self,
-        agent_interfaces,
+        agent_interfaces: Dict[str, AgentInterface],
         traffic_sim,  # SumoTrafficSimulation
         envision: EnvisionClient = None,
         visdom: VisdomClient = None,
         fixed_timestep_sec: float = 0.1,
         reset_agents_only: bool = False,
-        zoo_addrs=None,
+        zoo_addrs: Optional[Tuple[str, int]] = None,
         external_provider: bool = False,
+        config=SmartsConfig(),
     ):
         self._log = logging.getLogger(self.__class__.__name__)
         self._sim_id = Id.new("smarts")
-        self._is_setup = False
+        self._is_setup: bool = False
         self._scenario: Scenario = None
         self._renderer = None
         self._envision: EnvisionClient = envision
         self._visdom: VisdomClient = visdom
         self._traffic_sim = traffic_sim
-        self._external_provider = None
+        self._external_provider: ExternalProvider = None
+        self._config: SmartsConfig = config
 
         assert fixed_timestep_sec is None or fixed_timestep_sec > 0
         self.fixed_timestep_sec = fixed_timestep_sec
@@ -596,15 +612,20 @@ class SMARTS:
     def renderer(self):
         if not self._renderer:
             try:
-                from .renderer import Renderer
+                from .renderer import get_renderer
 
-                self._renderer = Renderer(self._sim_id)
-                if self._scenario:
-                    self._renderer.setup(self._scenario)
-                    self._vehicle_index.begin_rendering_vehicles(self._renderer)
+                self._renderer = get_renderer(self._sim_id, self._config)
+            except ImportError as e:
+                self._log.warning("Import failed: " + repr(e))
+                raise e
             except Exception as e:
                 self._log.warning("unable to create Renderer:  " + repr(e))
                 self._renderer = None
+                raise e
+        if self._renderer and not self._renderer.is_setup:
+            if self._scenario:
+                self._renderer.setup(self._scenario)
+                self._vehicle_index.begin_rendering_vehicles(self._renderer)
         return self._renderer
 
     @property
