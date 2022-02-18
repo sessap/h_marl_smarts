@@ -25,7 +25,7 @@ setup(
         "setuptools>=41.0.0,!=50.0",
         "cached-property>=1.5.2",
         "click>=7.1.2",  # used in scl
-        "gym>=0.17.3",
+        "gym>=0.17.3,<=0.19.0",
         "numpy>=1.19.5",
         "pandas>=1.3.4",
         "psutil>=5.4.8",
