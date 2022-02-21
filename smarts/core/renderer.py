@@ -55,7 +55,7 @@ class _ShowBaseInstance(ShowBase):
     def __new__(cls):
         # Singleton pattern:  ensure only 1 ShowBase instance
         if "__it__" not in cls.__dict__:
-            loadPrcFileData("", "gl-debug #t")
+            # loadPrcFileData("", "gl-debug #t")
             loadPrcFileData("", f"load-display p3tinydisplay")
             loadPrcFileData("", "aux-display p3headlessgl")
             loadPrcFileData("", "aux-display pandagl")
