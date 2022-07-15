@@ -4,8 +4,13 @@ agent:
   state:
     # default is simple
     wrapper:
-      name: FrameStack
+      name: H_FrameStack
       num_stack: 3
+      model_path: ./sv_models/sv_init_model
+      num_samples: 5
+      beta_t: 1.0
+      unif_grid: True
+      thompson_sampling: False
     features:
       goal_relative_pos: True
       distance_to_center: True
@@ -19,7 +24,7 @@ agent:
 
 # agent interface
 interface:
-  max_episode_steps: 1000
+  max_episode_steps: 200
   # rgb:
   #   width: 50
   #   height: 50
@@ -37,19 +42,20 @@ policy:
     name: DQNTrainer
 
 run:
-  checkpoint_freq: 4
+  checkpoint_freq: 10
   checkpoint_at_end: True
   max_failures: 1000
   resume: False
-  export_formats: [model, checkpoint]
+  export_formats: []
   stop:
-    time_total_s: 14400
+    training_iteration: 250
   config:
     log_level: ERROR
-    num_workers: 60
+    num_workers: 7
     num_gpus: 0
-    horizon: 1000
+    horizon: 200
     # learning
 
+
 checkpoint:
-  ./log/results/run/4lane-4/DQN_FrameStack_0_2021-01-25_16-59-276f728x1g/checkpoint_4/checkpoint-4
+  ./log/results/ckpts/beta_1/checkpoint_000050/checkpoint-50

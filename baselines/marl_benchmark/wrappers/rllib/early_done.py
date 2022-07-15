@@ -20,10 +20,24 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 from baselines.marl_benchmark.wrappers.rllib.frame_stack import FrameStack
+from baselines.marl_benchmark.wrappers.rllib.frame_stack_halluc import H_FrameStack
+from baselines.marl_benchmark.wrappers.rllib.frame_stack_eval import FrameStack_augm
 
 
 class EarlyDone(FrameStack):
     def step(self, agent_actions):
         observations, rewards, dones, infos = super(EarlyDone, self).step(agent_actions)
+        dones["__all__"] = any(list(dones.values()))
+        return observations, rewards, dones, infos
+
+class H_EarlyDone(H_FrameStack):
+    def step(self, agent_actions):
+        observations, rewards, dones, infos = super(H_EarlyDone, self).step(agent_actions)
+        dones["__all__"] = any(list(dones.values()))
+        return observations, rewards, dones, infos
+
+class EarlyDone_augm(FrameStack_augm):
+    def step(self, agent_actions, sv_next_states=None, get_rewards_fun=None):
+        observations, rewards, dones, infos = super(EarlyDone_augm, self).step(agent_actions, sv_next_states=sv_next_states, get_rewards_fun=get_rewards_fun)
         dones["__all__"] = any(list(dones.values()))
         return observations, rewards, dones, infos

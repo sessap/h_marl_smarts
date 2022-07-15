@@ -1,0 +1,59 @@
+name: dqn-baseline-lane-controller
+
+agent:
+  state:
+    # default is simple
+    wrapper:
+      name: FrameStack
+      num_stack: 3
+      model_path: None
+      num_samples: 5
+      greedy_pred: False
+    features:
+      goal_relative_pos: True
+      distance_to_center: True
+      speed: True
+      steering: True
+      heading_errors: [20, continuous]
+      neighbor: 8
+      # img_gray: [28, 28]
+  action:
+    type: 1   # 0 for continuous, 1 for discrete
+
+# agent interface
+interface:
+  max_episode_steps: 200
+  # rgb:
+  #   width: 50
+  #   height: 50
+  neighborhood_vehicles:
+    radius: 50
+  waypoints:
+    lookahead: 50   # larger than size of heading errors
+
+# policy
+policy:
+  framework: rllib
+  trainer:
+    # specify the import path and trainer name
+    path: ray.rllib.agents.dqn
+    name: DQNTrainer
+
+run:
+  checkpoint_freq: 10
+  checkpoint_at_end: True
+  max_failures: 1000
+  resume: False
+  export_formats: []
+  stop:
+    training_iteration: 2000
+  config:
+    log_level: ERROR
+    num_workers: 7
+    num_gpus: 0
+    horizon: 150
+    # learning
+
+
+checkpoint:
+  ./log/results/ckpts/beta_1/checkpoint_000750/checkpoint-750

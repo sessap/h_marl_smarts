@@ -1,3 +1,5 @@
+
+
 #!/usr/bin/env python -W ignore::DeprecationWarning
 # Copyright (C) 2020. Huawei Technologies Co., Ltd. All rights reserved.
 #
@@ -43,6 +45,7 @@ def main(
     paradigm="decentralized",
     headless=False,
     cluster=False,
+    config = None
 ):
     if cluster:
         ray.init(address="auto", redis_password="5241590000000000")
@@ -51,9 +54,13 @@ def main(
                 ray.state.cluster_resources()
             )
         )
-    config = gen_config(
-        scenario=scenario, config_file=config_file, paradigm=paradigm, headless=headless
-    )
+    if not config:
+        # if config is not passed, generate it from config_file
+        config = gen_config(
+            scenario=scenario, config_file=config_file, paradigm=paradigm, headless=headless
+        )
+    if paradigm == 'centralized':
+        log_dir = log_dir + '/centralized'
 
     tune_config = config["run"]["config"]
     tune_config.update(
@@ -68,7 +75,7 @@ def main(
     # TODO(ming): change scenario name (not path)
     experiment_name = EXPERIMENT_NAME.format(
         scenario=scenario.split("/")[-1],
-        n_agent=4,
+        n_agent=2,
     )
 
     log_dir = Path(log_dir).expanduser().absolute() / RUN_NAME
@@ -87,6 +94,11 @@ def main(
             "restore": restore_path,
         }
     )
+
+    ### Local mode for debugging
+    #ray.init(local_mode=True)
+    ############################
+
     analysis = tune.run(**config["run"])
 
     print(analysis.dataframe().head())

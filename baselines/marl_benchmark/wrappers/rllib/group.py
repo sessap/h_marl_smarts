@@ -22,11 +22,11 @@
 import copy
 
 from ray.rllib.agents.dqn import DQNTrainer
-from ray.rllib.env.constants import GROUP_INFO, GROUP_REWARDS
-from ray.rllib.env.group_agents_wrapper import _GroupAgentsWrapper
+#from ray.rllib.env.constants import GROUP_INFO, GROUP_REWARDS
+from ray.rllib.env.wrappers.group_agents_wrapper import GroupAgentsWrapper, GROUP_INFO, GROUP_REWARDS
 
 
-class Group(_GroupAgentsWrapper):
+class Group(GroupAgentsWrapper):
     def __init__(self, config):
         obs_space = config["obs_space"]
         act_space = config["act_space"]

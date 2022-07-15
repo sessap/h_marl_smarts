@@ -48,7 +48,24 @@ def radar_plots(values, labels, features, title):
     plt.title(title)
     ax.grid(True)
     plt.legend(labels, loc="best", bbox_to_anchor=(0.5, 0.0, -0.54, 1.15))
-    plt.show()
+    #plt.show()
+    return fig
+
+def reward_boxplot(rewards):
+    fig, axs = plt.subplots(1,2)
+    avg_rewards = np.mean(rewards, axis=1)
+    axs[0].boxplot(avg_rewards)
+    axs[0].set_xlabel('avg. agent')
+    #axs[0].set_title('avg reward = ' + f'{np.mean(avg_rewards):.3f}')
+    axs[1].boxplot(rewards)
+    num_agents = len(rewards[0])
+    #axs[1].set_xlabel('agents')
+    axs[1].set_xticks([i for i in range(num_agents)])
+    axs[1].set_xticklabels(['AGENT-'+str(i) for i in range(num_agents)])
+    fig.suptitle('Cumulative rewards')
+    #plt.show()
+    return fig
+
 
 
 if __name__ == "__main":

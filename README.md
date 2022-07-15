@@ -1,3 +1,37 @@
+This repository contains the code associated with the paper:
+> **Efficient Model-based Multi-agent Reinforcement Learning via Optimistic Equilibrium Computation**
+> *Pier Giuseppe Sessa, Maryam Kamgarpour, Andreas Krause*.
+> International Conference on Machine Learning (ICML), 2022.
+
+
+Experiments are run within the SMARTS autonomous driving environment, from which this repository has been forked (see original documentation below).
+To replicate the results of the paper (or launch new traning runs), it is advised to create a python virtual env (Python 3.8 is supported):
+```bash
+# create virtualenv
+python3.8 -m venv hmarl_env
+
+# activate virtualenv
+source hmarl_env/bin/activate
+
+# move to experiments folder
+cd baselines/marl_benchmark
+```
+and install the required packages: 
+```bash
+# install python package with rllib dependencies
+pip install -e .
+
+# install additional required packages
+pip install -r requirements_hmarl.txt
+```
+The script `run_learning.py` performs the full experiments pipeline on a specified scenario: starting with an initial model for the HD vehicles, it 1) runs decentralized DQN learning to compute equilibrium policies, 2) evaluates the computed policies, and 3) updates the 
+HD vehicle's model with the newly observed data. The new model is used for finding new equilibrium policies at the next round (according to H-MARL). 
+Results can be plotted with `plot_learning.py`.
+
+In the context of this experiments, H-MARL is implemented by building an hallucinated observation wrapper
+which replaces the original environment step function (which assumes full knowledge of the social vehicles' model) with an hallucinated step function which selects the optimistic realization of the next state, based on the learned model for the social vehicle.
+
+
 # SMARTS
 ![SMARTS CI](https://github.com/junluo-huawei/SMARTS/workflows/SMARTS%20CI/badge.svg?branch=master) ![Code style](https://img.shields.io/badge/code%20style-black-000000.svg)
 

@@ -3,8 +3,11 @@ name: ppo-baseline
 agent:
   state:
     wrapper:
-      name: FrameStack
+      name: H_FrameStack
       num_stack: 3
+      model_path: None
+      num_samples: 5
+      greedy_pred: False
     features:
       # relative position of goal
       goal_relative_pos: True
@@ -26,7 +29,7 @@ agent:
 
 # for agent interface
 interface:
-  max_episode_steps: 1000
+  max_episode_steps: 200
   neighborhood_vehicles:
     radius: 50
   waypoints:
@@ -39,18 +42,18 @@ policy:
     name: PPOTrainer
 
 run:
-  checkpoint_freq: 2
+  checkpoint_freq: 10
   checkpoint_at_end: True
   max_failures: 1000
   resume: False
-  export_formats: [model, checkpoint]
+  export_formats: []
   stop:
-    time_total_s: 14400
+    training_iteration: 150
   config:
     log_level: WARN
     num_workers: 1
     num_gpus: 0
-    horizon: 1000
+    horizon: 200
     clip_param: 0.2
     num_sgd_iter: 10
     sgd_minibatch_size: 32

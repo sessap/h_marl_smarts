@@ -30,6 +30,8 @@ import numpy
 
 from envision import types as envision_types
 from envision.client import Client as EnvisionClient
+from .coordinates import Pose, Heading
+import numpy as np
 
 with warnings.catch_warnings():
     # XXX: Benign warning, seems no other way to "properly" fix
@@ -132,12 +134,12 @@ class SMARTS:
 
         self._ground_bullet_id = None
 
-    def step(self, agent_actions):
+    def step(self, agent_actions, sv_next_states=None, get_rewards_fun = None):
         if not self._is_setup:
             raise SMARTSNotSetupError("Must call reset() or setup() before stepping.")
 
         try:
-            return self._step(agent_actions)
+            return self._step(agent_actions, sv_next_states=sv_next_states, get_rewards_fun=get_rewards_fun)
         except (KeyboardInterrupt, SystemExit):
             # ensure we clean-up if the user exits the simulation
             self._log.info("Simulation was interrupted by the user.")
@@ -158,7 +160,7 @@ class SMARTS:
                     f"Attempted to perform actions on non-existing agent, {agent_id} "
                 )
 
-    def _step(self, agent_actions):
+    def _step(self, agent_actions, sv_next_states=None, get_rewards_fun=None):
         """Steps through the simulation while applying the given agent actions.
         Returns the observations, rewards, and done signals.
         """
@@ -192,6 +194,7 @@ class SMARTS:
         provider_state = self._step_providers(all_agent_actions, dt)
         self._check_if_acting_on_active_agents(agent_actions)
 
+        self._process_collisions()
         # 3. Step bubble manager and trap manager
         self._vehicle_index.sync()
         self._bubble_manager.step(self)
@@ -206,6 +209,65 @@ class SMARTS:
 
         # Agents
         self._agent_manager.step_sensors(self)
+        for id in self._vehicle_index._sensor_states.keys():
+         self._vehicle_index._sensor_states[id]._step-=1
+        obs_init, rew_movement, _ , _ = self._agent_manager.observe(self)
+
+        if sv_next_states:
+            # Override vehicle state for non-controlled vehicle
+            realiz_opt = 0
+            if len(sv_next_states)>1: # Find optimistic step realization
+                reward_opt = -10000
+                for realiz, sv_next_s in enumerate(sv_next_states):
+                    for i, vstate in enumerate(provider_state.vehicles):
+                        if vstate.vehicle_id in sv_next_s:
+                            sv_next_state = sv_next_s[vstate.vehicle_id]
+                            provider_state.vehicles[i] = VehicleState(dimensions=provider_state.vehicles[i].dimensions,
+                                                                      pose=Pose(position=sv_next_state['position'],
+                                                                                orientation=vstate.pose.orientation,
+                                                                                heading_=Heading(sv_next_state['heading'])),
+                                                                      source='SUMO',
+                                                                      speed=sv_next_state['speed'],
+                                                                      vehicle_id=vstate.vehicle_id,
+                                                                      vehicle_type='passenger')
+                    self._harmonize_providers(provider_state)
+                    self._process_collisions()
+                    self._vehicle_states = [v.state for v in self._vehicle_index.vehicles]
+                    self._agent_manager.step_sensors(self)
+                    for id in self._vehicle_index._sensor_states.keys():
+                        self._vehicle_index._sensor_states[id]._step -= 1
+
+                    obs, rew_new, scores, _ = self._agent_manager.observe(self)
+                    rewards = get_rewards_fun(obs, rew_movement, addframe=True)
+                    # 7. Perform visualization
+                    self._try_emit_envision_state(provider_state, obs, scores)
+
+                    cum_reward = np.sum(list(rewards.values()))
+                    if cum_reward > reward_opt:
+                        reward_opt = cum_reward
+                        realiz_opt = realiz
+
+            sv_next_s = sv_next_states[realiz_opt]
+            ## Modify provider state
+            for i, vstate in enumerate(provider_state.vehicles):
+                if vstate.vehicle_id in sv_next_s:
+                    sv_next_state = sv_next_s[vstate.vehicle_id]
+                    provider_state.vehicles[i] = VehicleState(dimensions=provider_state.vehicles[i].dimensions,
+                                                                     pose=Pose(position=sv_next_state['position'], orientation=vstate.pose.orientation,
+                                                                                heading_=Heading(sv_next_state['heading'])),
+                                                                      source='SUMO',
+                                                                      speed=sv_next_state['speed'],
+                                                                      vehicle_id=vstate.vehicle_id,
+                                                                      vehicle_type='passenger')
+
+            self._harmonize_providers(provider_state)
+
+            self._process_collisions()
+
+            self._vehicle_index.sync()
+            self._bubble_manager.step(self)
+            self._trap_manager.step(self)
+
 
         if self._renderer:
             # runs through the render pipeline (for camera-based sensors)
@@ -213,10 +275,13 @@ class SMARTS:
             # so that all updates are ready before rendering happens per frame
             self._renderer.render()
 
+        # Agents
+        self._vehicle_states = [v.state for v in self._vehicle_index.vehicles]
+        self._agent_manager.step_sensors(self)
         observations, rewards, scores, dones = self._agent_manager.observe(self)
 
         response_for_ego = self._agent_manager.filter_response_for_ego(
-            (observations, rewards, scores, dones)
+            (observations, rew_movement, scores, dones)
         )
 
         # 5. Send observations to social agents
@@ -582,7 +647,7 @@ class SMARTS:
 
         self._bullet_client.stepSimulation()
 
-        self._process_collisions()
+        #self._process_collisions() called outside
 
         provider_state = ProviderState()
         pybullet_agent_ids = {
@@ -858,13 +923,33 @@ class SMARTS:
 
     def _process_collisions(self):
         self._vehicle_collisions = defaultdict(list)  # list of `Collision` instances
+        for vehicle in self._vehicle_index.vehicles:
+            collidee_ids = []
+            for other_vehicle in self._vehicle_index.vehicles:
+                if other_vehicle.id is not vehicle.id:
+                    if vehicle.chassis.to_polygon.intersects(other_vehicle.chassis.to_polygon):
+                        collidee_ids.append(other_vehicle.id)
+            for collidee_id in collidee_ids:
+                actor_id = self._vehicle_index.actor_id_from_vehicle_id(collidee_id)
+                # TODO: Should we specify the collidee as the vehicle ID instead of
+                #       the agent/social ID?
+                collision = Collision(collidee_id=actor_id)
+                self._vehicle_collisions[vehicle.id].append(collision)
+
+    def _process_collisions_bulletclient(self):
+        self._vehicle_collisions = defaultdict(list)  # list of `Collision` instances
 
         for vehicle_id in self._vehicle_index.agent_vehicle_ids():
             vehicle = self._vehicle_index.vehicle_by_id(vehicle_id)
             # We are only concerned with vehicle-vehicle collisions
-            collidee_bullet_ids = set(
-                [p.bullet_id for p in vehicle.chassis.contact_points]
-            )
+            if 0:
+                collidee_bullet_ids = set(
+                    [p.bullet_id for p in vehicle.chassis.contact_points]
+                )
+            else:
+                collidee_bullet_ids = set(
+                    [bullet_id for bullet_id in vehicle.chassis.colliding_ids]
+                )
             collidee_bullet_ids.discard(self._ground_bullet_id)
 
             if not collidee_bullet_ids:

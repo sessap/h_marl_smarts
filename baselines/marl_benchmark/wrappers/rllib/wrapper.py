@@ -71,8 +71,8 @@ class Wrapper(MultiAgentEnv):
         for agent_id, obs in observations.items():
             self._last_observations[agent_id] = copy.copy(obs)
 
-    def step(self, agent_actions):
-        return self.env.step(agent_actions)
+    def step(self, agent_actions, sv_next_states=None, get_rewards_fun=None):
+        return self.env.step(agent_actions, sv_next_states=sv_next_states, get_rewards_fun=get_rewards_fun)
 
     def reset(self):
         return self.env.reset()

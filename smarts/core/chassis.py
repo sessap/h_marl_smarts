@@ -55,6 +55,16 @@ with pkg_resources.path(models, "controller_parameters.yaml") as controller_path
 with open(controller_filepath, "r") as controller_file:
     DEFAULT_CONTROLLER_PARAMETERS = yaml.safe_load(controller_file)["sedan"]
 
+def _query_bullet_colliding_ids(bullet_client, bullet_id, link_index):
+    contact_objects = set()
+
+    min_, max_ = bullet_client.getAABB(bullet_id, link_index)
+    # `getContactPoints` does not pick up collisions well so we cast a fast box check on the physics
+    overlapping_objects = bullet_client.getOverlappingObjects(min_, max_)
+    if overlapping_objects is not None:
+        contact_objects = set(oo for oo, _ in overlapping_objects if oo != bullet_id)
+    return list(contact_objects)
+
 
 def _query_bullet_contact_points(bullet_client, bullet_id, link_index):
     contact_objects = set()
@@ -71,7 +81,6 @@ def _query_bullet_contact_points(bullet_client, bullet_id, link_index):
         contact_points.extend(
             bullet_client.getClosestPoints(bullet_id, contact_object, distance=0.05)
         )
-
     return contact_points
 
 
@@ -182,6 +191,10 @@ class BoxChassis(Chassis):
             ContactPoint(bullet_id=p[2], contact_point=p[5], contact_point_other=p[6])
             for p in contact_points
         ]
+    @property
+    def colliding_ids(self):
+        ## 0 is the chassis link index
+        return _query_bullet_colliding_ids(self._client, self._bullet_id, 0)
 
     @property
     def bullet_id(self) -> str:
@@ -213,6 +226,10 @@ class BoxChassis(Chassis):
     @property
     def pose(self) -> Pose:
         return self._pose
+
+    @pose.setter
+    def set_pose(self, pose: Pose):
+        self._pose = pose
 
     @property
     def steering(self):

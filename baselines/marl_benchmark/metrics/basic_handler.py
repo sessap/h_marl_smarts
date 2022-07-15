@@ -34,7 +34,6 @@ from baselines.marl_benchmark.metrics import MetricHandler
 from baselines.marl_benchmark.metrics.basic_metrics import BehaviorMetric
 from baselines.marl_benchmark.utils import episode_log, format, plot
 
-
 def agent_info_adapter(env_obs, shaped_reward: float, raw_info: dict):
     info = dict()
     info["speed"] = env_obs.ego_vehicle_state.speed
@@ -51,13 +50,18 @@ def agent_info_adapter(env_obs, shaped_reward: float, raw_info: dict):
 
 
 class MetricKeys:
+    AVE_R = "Mean Reward"
+    CR = "Collision Rates"
     AVE_CR = "Average Collision Rate"
-    AVE_COMR = "Completion Rate"
+    COMR = "Completion Rates"
+    AVE_COMR = "Average Completion Rate"
     MAX_L = "Max Live Step"
     MIN_L = "Min Live Step"
     MEAN_L = "Mean Live Step"
     MIN_G = "Min Goal Distance"
-
+    AVE_G = "Average Cum. Goal Distance"
+    LENGHT = 'Episodes length'
+    SPEED = 'Speeds'
 
 class BasicMetricHandler(MetricHandler):
     """ MetricHandler serves for the metric """
@@ -67,6 +71,7 @@ class BasicMetricHandler(MetricHandler):
         super(BasicMetricHandler, self).__init__()
         self._logs_mapping = dict()
         self._logs = None
+        self._csv_dir = None
 
     def set_log(self, algorithm, num_episodes):
         self._logs = [episode_log.BasicEpisodeLog() for _ in range(num_episodes)]
@@ -79,7 +84,7 @@ class BasicMetricHandler(MetricHandler):
     def log_step(self, episode, observations, actions, rewards, dones, infos):
         self._logs[episode].record_step(observations, actions, rewards, dones, infos)
 
-    def show_plots(self, **kwargs):
+    def return_plots(self, **kwargs):
         """ Show behavior metric plots, support only one algorithm now. """
 
         behavior_metric = BehaviorMetric()
@@ -98,12 +103,29 @@ class BasicMetricHandler(MetricHandler):
         print(
             f">>>>>>>>>>>>>>>> shapes of: {values.shape}, {list(results.keys())}, {len(metric_keys)}"
         )
-        plot.radar_plots(
+        fig1 = plot.radar_plots(
             values, list(results.keys()), metric_keys, title="Behavior Analysis"
         )
 
+        # Show rewards plot
+        # First, compute agents' cumulative rewards, for each episode
+        rewards = []
+        for algorithm, episode_logs in self.logs_mapping.items():
+            for log in episode_logs:
+                rewards_episode = []
+                for agent_id in sorted(log.reward.keys()):
+                    rewards_episode.append(np.sum(log.reward[agent_id]))
+                rewards.append(rewards_episode)
+        rewards = np.array(rewards)
+
+        print('avg cum. reward:' + str(np.mean(rewards)))
+        print('avg cum. rewards (per agent):' + str(np.mean(rewards, axis = 0)))
+        fig2 = plot.reward_boxplot(rewards)
+        return fig1, fig2, rewards
+
     def write_to_csv(self, csv_dir):
         csv_dir = f"{csv_dir}/{int(time.time())}"
+        self._csv_dir = csv_dir
         for i, logger in enumerate(self._logs):
             sub_dir = f"{csv_dir}/episode_{i}"
             os.makedirs(sub_dir)
@@ -116,6 +138,7 @@ class BasicMetricHandler(MetricHandler):
                         str(i) for i in range(logger.agent_step[agent_id])
                     ]
                     writer.writerow(headers)
+                    writer.writerow(["Reward"] + logger.reward[agent_id])
                     writer.writerow(["Speed"] + logger.ego_speed[agent_id])
                     writer.writerow(["GDistance"] + logger.distance_to_goal[agent_id])
                     # writer.writerow(
@@ -129,6 +152,7 @@ class BasicMetricHandler(MetricHandler):
     def read_logs(self, csv_dir):
         agent_record = defaultdict(
             lambda: {
+                "Reward": None,
                 "Speed": None,
                 "GDistance": None,
                 "EDistance": None,
@@ -139,51 +163,73 @@ class BasicMetricHandler(MetricHandler):
         for f_name in os.listdir(csv_dir):
             if f_name.endswith(".csv"):
                 f_path = os.path.join(csv_dir, f_name)
-                agent_id = f_path.split(".")[0]
-                print(f"Got file `{f_name}` for agent-{agent_id}")
+                agent_id = f_path.split("_")[-1]
+                #print(f"Got file `{f_name}` for agent-{agent_id}")
                 with open(
                     f_path,
                 ) as f:
                     reader = csv.reader(f, delimiter=",")
                     _ = next(reader)
-                    agent_record[agent_id]["Speed"] = next(reader)[1:]
-                    agent_record[agent_id]["GDistance"] = next(reader)[1:]
+                    agent_record[agent_id]["Reward"] = [float(r) for r in next(reader)[1:]]
+                    agent_record[agent_id]["Speed"] = [float(s) for s in next(reader)[1:]]
+                    agent_record[agent_id]["GDistance"] = [float(d) for d in next(reader)[1:]]
                     # agent_record[agent_id]["EDistance"] = next(reader)[1:]
                     # agent_record[agent_id]["Acceleration"] = next(reader)[1:]
-                    agent_record[agent_id]["Num_Collision"] = next(reader)
+                    agent_record[agent_id]["Num_Collision"] = float(next(reader)[1:][0])
         return agent_record
 
-    def compute(self, csv_dir):
+    def compute(self, csv_dir, return_metrics=False):
         # list directory
-        sub_dirs = [os.path.join(csv_dir, sub_dir) for sub_dir in os.listdir(csv_dir)]
+        sub_dirs = [os.path.join(csv_dir, sub_dir) for sub_dir in os.listdir(csv_dir) if sub_dir[0:7]=='episode']
         agent_metrics = defaultdict(
             lambda: {
+                MetricKeys.AVE_R: 0.0,
+                MetricKeys.CR: [],
                 MetricKeys.AVE_CR: 0.0,
+                MetricKeys.COMR: [],
                 MetricKeys.AVE_COMR: 0.0,
                 MetricKeys.MAX_L: 0,
                 MetricKeys.MIN_L: 0,
                 MetricKeys.MEAN_L: 0.0,
                 MetricKeys.MIN_G: 0.0,
+                MetricKeys.AVE_G: [],
+                MetricKeys.LENGHT: [],
+                MetricKeys.SPEED: []
             }
         )
 
         goal_dist_th = 2.0
 
         for sub_dir in sub_dirs:
-            episode_agent_record: dict = self.read_episode(sub_dir)
+            episode_agent_record: dict = self.read_logs(sub_dir)
             for aid, record in episode_agent_record.items():
                 am = agent_metrics[aid]
+                am[MetricKeys.AVE_R] += np.mean(record["Reward"])
+                am[MetricKeys.CR].append(record["Num_Collision"])
                 am[MetricKeys.AVE_CR] += record["Num_Collision"]
                 min_goal_dist = record["GDistance"][-1]
+                if min_goal_dist < goal_dist_th:
+                    am[MetricKeys.COMR].append(1.0)
+                    am[MetricKeys.LENGHT].append(len(record["Speed"]))
+                else:
+                    am[MetricKeys.COMR].append(0.0)
+                    #am[MetricKeys.LENGHT].append(len(record["Speed"]))
                 am[MetricKeys.AVE_COMR] += 1.0 if min_goal_dist < goal_dist_th else 0.0
                 am[MetricKeys.MAX_L] = max(am[MetricKeys.MAX_L], len(record["Speed"]))
                 am[MetricKeys.MIN_L] = min(am[MetricKeys.MIN_L], len(record["Speed"]))
                 am[MetricKeys.MEAN_L] += len(record["Speed"])
                 am[MetricKeys.MIN_G] = min(am[MetricKeys.MIN_G], min_goal_dist)
+                am[MetricKeys.AVE_G].append(np.mean(record["GDistance"]))
+                am[MetricKeys.SPEED].append(record["Speed"])
 
         for aid, record in agent_metrics.items():
+            record[MetricKeys.AVE_R] /= len(sub_dirs)
             record[MetricKeys.MEAN_L] /= len(sub_dirs)
             record[MetricKeys.AVE_COMR] /= len(sub_dirs)
             record[MetricKeys.AVE_CR] /= len(sub_dirs)
+            #record[MetricKeys.AVE_G] /= len(sub_dirs)
 
-        print(format.pretty_dict(agent_metrics))
+        if return_metrics:
+            return agent_metrics
+        else:
+            print(format.pretty_dict(agent_metrics))

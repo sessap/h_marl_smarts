@@ -28,6 +28,7 @@ from smarts.core.utils.episodes import EpisodeLog
 
 @dataclass
 class BasicEpisodeLog(EpisodeLog):
+    reward: dict = field(default_factory=lambda: defaultdict(lambda: []))
     ego_speed: dict = field(default_factory=lambda: defaultdict(lambda: []))
     num_collision: dict = field(default_factory=lambda: defaultdict(lambda: 0))
     distance_to_center: dict = field(default_factory=lambda: defaultdict(lambda: []))
@@ -53,6 +54,7 @@ class BasicEpisodeLog(EpisodeLog):
                         self.reach_goal[name] = _info["events"].reached_goal
                         self.distance_to_goal[name] = _info["distance_to_goal"]
             else:
+                self.reward[agent_id].append(rewards[agent_id])
                 self.ego_speed[agent_id].append(info["speed"])
                 self.num_collision[agent_id] += info["collision"]
                 self.distance_to_goal[agent_id].append(info["distance_to_goal"])

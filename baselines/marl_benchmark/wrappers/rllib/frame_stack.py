@@ -207,7 +207,7 @@ class FrameStack(Wrapper):
 
     @staticmethod
     def get_reward_adapter(observation_adapter):
-        def func(env_obs_seq, env_reward):
+        def func(env_obs_seq, env_reward, alpha=0.0):
             penalty, bonus = 0.0, 0.0
             obs_seq = observation_adapter(env_obs_seq)
 
@@ -219,15 +219,16 @@ class FrameStack(Wrapper):
             if neighbor_features_np is not None:
                 new_neighbor_feature_np = neighbor_features_np[-1].reshape((-1, 5))
                 mean_dist = np.mean(new_neighbor_feature_np[:, 0])
+                mean_speed = np.mean(new_neighbor_feature_np[:, 1])
                 mean_ttc = np.mean(new_neighbor_feature_np[:, 2])
 
                 last_neighbor_feature_np = neighbor_features_np[-2].reshape((-1, 5))
                 mean_dist2 = np.mean(last_neighbor_feature_np[:, 0])
-                # mean_speed2 = np.mean(last_neighbor_feature[:, 1])
+                mean_speed2 = np.mean(last_neighbor_feature_np[:, 1])
                 mean_ttc2 = np.mean(last_neighbor_feature_np[:, 2])
-                penalty += (
+                penalty += 0*(
                     0.03 * (mean_dist - mean_dist2)
-                    # - 0.01 * (mean_speed - mean_speed2)
+                     - 0.01 * (mean_speed - mean_speed2)
                     + 0.01 * (mean_ttc - mean_ttc2)
                 )
 
@@ -258,7 +259,7 @@ class FrameStack(Wrapper):
             diff_dist_to_center_penalty = np.abs(distance_to_center_np[-2]) - np.abs(
                 distance_to_center_np[-1]
             )
-            penalty += 0.01 * diff_dist_to_center_penalty[0]
+            penalty += 0.05 * diff_dist_to_center_penalty[0]
 
             # ======== Penalty & Bonus: event (collision, off_road, reached_goal, reached_max_episode_steps)
             ego_events = last_env_obs.events
@@ -268,13 +269,13 @@ class FrameStack(Wrapper):
             penalty += -50.0 if ego_events.off_road else 0.0
             # ::reach goal
             if ego_events.reached_goal:
-                bonus += 20.0
+                bonus += 50.0
 
             # ::reached max_episode_step
             if ego_events.reached_max_episode_steps:
                 penalty += -0.5
             else:
-                bonus += 0.5
+                bonus += 0 #bonus to be alive, incentivizes agents to never end the episode..
 
             # ======== Penalty: heading error penalty
             # if obs.get("heading_errors", None):
@@ -298,8 +299,12 @@ class FrameStack(Wrapper):
                 steering_penalty = 0
             penalty += 0.1 * steering_penalty
 
+            # ======== Penalty: speed change (acceleration) =======
+            second_last_env_obs = env_obs_seq[-2]
+            penalty += -3*np.max((last_env_obs.ego_vehicle_state.speed - second_last_env_obs.ego_vehicle_state.speed, 0))
+
             # ========= Bonus: environment reward (distance travelled) ==========
-            bonus += 0.05 * env_reward
-            return bonus + penalty
+            bonus += 0.5 * env_reward
+            return (1-alpha)*bonus + (1+alpha)*penalty
 
         return func

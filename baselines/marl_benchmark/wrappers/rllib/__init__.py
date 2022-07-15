@@ -19,7 +19,9 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
-from .early_done import EarlyDone
+from .early_done import EarlyDone, H_EarlyDone, EarlyDone_augm
 from .frame_stack import FrameStack
 from .group import Group
 from .simple import Simple
+from .frame_stack_halluc import H_FrameStack
+from .frame_stack_eval import FrameStack_augm

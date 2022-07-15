@@ -1,0 +1,62 @@
+name: ppo-baseline
+
+agent:
+  state:
+    wrapper:
+      name: FrameStack
+      num_stack: 3
+    features:
+      # relative position of goal
+      goal_relative_pos: True
+      # distance to the center of lane
+      distance_to_center: True
+      # speed
+      speed: True
+      # steering
+      steering: True
+      # a list of heading errors
+      heading_errors: [20, continuous]
+      # at most eight neighboring vehicles' driving states
+      neighbor: 8
+      # bird's-eye view gray-scale image with the agent at the center
+      # img_gray: (28, 28)
+
+  action:
+    type: 1  # 0 for continuous, 1 for discrete
+
+# for agent interface
+interface:
+  max_episode_steps: 150
+  neighborhood_vehicles:
+    radius: 50
+  waypoints:
+    lookahead: 50  # larger than size of heading errors
+
+policy:
+  framework: rllib
+  trainer:
+    path: ray.rllib.agents.ppo
+    name: PPOTrainer
+
+run:
+  checkpoint_freq: 10
+  checkpoint_at_end: True
+  max_failures: 1000
+  resume: False
+  export_formats: []
+  stop:
+    training_iteration: 600
+  config:
+    log_level: WARN
+    num_workers: 1
+    num_gpus: 0
+    horizon: 200
+    clip_param: 0.2
+    num_sgd_iter: 30
+    sgd_minibatch_size: 32
+    lr: 1e-4
+    lambda: 0
+    train_batch_size: 500
+
+checkpoint:
+  ./log/results/run/cross_new-4/PPO_FrameStack_c8fd1_00000_0_2021-12-13_08-17-52/checkpoint_000100/checkpoint-100

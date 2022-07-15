@@ -7,7 +7,7 @@ test: build-all-scenarios
 		--doctest-modules \
 		--forked \
 		--dist=loadscope \
-		-n `nproc --ignore 2` \
+		-n 4 --ignore 2 \
 		./envision ./smarts/contrib ./smarts/core ./smarts/env ./smarts/sstudio ./tests \
 		--ignore=./smarts/core/tests/test_smarts_memory_growth.py \
 		--ignore=./smarts/env/tests/test_benchmark.py \
@@ -24,7 +24,7 @@ sanity-test: build-all-scenarios
 		--forked \
 		--dist=loadscope \
 		--junitxml="sanity_test_result.xml" \
-		-n `nproc --ignore 2` \
+		-n 4 --ignore 2 \
 		./smarts/core/tests/test_python_version.py::test_python_version \
 		./smarts/core/tests/test_sumo_version.py::test_sumo_version \
 		./smarts/core/tests/test_dynamics_backend.py::test_set_pose \

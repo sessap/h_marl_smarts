@@ -28,7 +28,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
-from ray.rllib.utils.types import ModelGradients, TensorType
+from ray.rllib.utils.typing import ModelGradients, TensorType
 
 _, tf, tf_version = try_import_tf()
 

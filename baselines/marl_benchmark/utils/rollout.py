@@ -20,16 +20,18 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 import collections
+import torch
+import numpy as np
 
 from ray import logger
 from ray.rllib.env import MultiAgentEnv
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 from ray.rllib.evaluation.worker_set import WorkerSet
-from ray.rllib.rollout import DefaultMapping, default_policy_agent_mapping
+from ray.rllib.evaluate import DefaultMapping, default_policy_agent_mapping
 from ray.rllib.utils.spaces.space_utils import flatten_to_single_ndarray
 
 
-def rollout(trainer, env_name, metrics_handler, num_steps, num_episodes, log_dir):
+def rollout(trainer, env_name, metrics_handler, num_steps, num_episodes, log_dir, sv_model=None, saved_transitions_dir='None'):
     """Reference: https://github.com/ray-project/ray/blob/master/rllib/rollout.py"""
     policy_agent_mapping = default_policy_agent_mapping
     assert hasattr(trainer, "workers") and isinstance(trainer.workers, WorkerSet)
@@ -46,9 +48,15 @@ def rollout(trainer, env_name, metrics_handler, num_steps, num_episodes, log_dir
         for p, m in policy_map.items()
     }
 
+    saved_transitions = {}
     for episode in range(num_episodes):
+        saved_transitions[episode] = {}
+        saved_transitions[episode]['env_obs'] = []
+        saved_transitions[episode]['actions'] = []
+
         mapping_cache = {}  # in case policy_agent_mapping is stochastic
-        obs = env.reset()
+        obs, env_obs = env.reset()
+        saved_transitions[episode]['env_obs'].append(env_obs)
         agent_states = DefaultMapping(
             lambda agent_id: state_init[mapping_cache[agent_id]]
         )
@@ -59,6 +67,7 @@ def rollout(trainer, env_name, metrics_handler, num_steps, num_episodes, log_dir
         done = False
         reward_total = 0.0
         step = 0
+        sv_states = {}
         while not done and step < num_steps:
             multi_obs = obs if multiagent else {_DUMMY_AGENT_ID: obs}
             action_dict = {}
@@ -90,7 +99,27 @@ def rollout(trainer, env_name, metrics_handler, num_steps, num_episodes, log_dir
             action = action_dict
 
             action = action if multiagent else action[_DUMMY_AGENT_ID]
-            next_obs, reward, done, info = env.step(action)
+
+            saved_transitions[episode]['actions'].append(action)
+
+            if sv_model and sv_states:
+                num_samples = 5
+                sv_next_states_realiz = []
+                for i in range(num_samples):
+                    sv_next_states = {}
+                    for sv_id in sv_states:
+                        etas = np.random.uniform(low = -1, high=1, size=(2))*0.5
+                        sv_next_states[sv_id] = sv_model.predict_state(torch.from_numpy(np.array([sv_states[sv_id]])), etas = etas)
+                    sv_next_states_realiz.append(sv_next_states)
+            else:
+                sv_next_states_realiz = None
+            next_obs, reward, done, info, env_obs = env.step(action, sv_next_states=sv_next_states_realiz, get_rewards_fun=env._get_rewards)
+            saved_transitions[episode]['env_obs'].append(env_obs)
+            if sv_model:
+                sv_states = {}
+                sv_ids = list(sv_model.compute_sv_ego_states(env_obs).keys())
+                for sv_id in sv_ids:
+                    sv_states[sv_id] = sv_model.compute_sv_state(sv_id, env_obs)
 
             metrics_handler.log_step(
                 episode=episode,
@@ -129,3 +158,8 @@ def rollout(trainer, env_name, metrics_handler, num_steps, num_episodes, log_dir
         if done:
             episode += 1
     metrics_handler.write_to_csv(csv_dir=log_dir)
+
+    if saved_transitions_dir is not 'None':
+        import pickle
+        with open( saved_transitions_dir + "/saved_transitions.pkl", "wb") as f:
+            pickle.dump(saved_transitions, f)

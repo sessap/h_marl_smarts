@@ -35,7 +35,7 @@ class MetricHandler(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def show_plots(self, **kwargs):
+    def return_plots(self, **kwargs):
         """ Do visualization """
         pass
 
